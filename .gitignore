@@ -1,0 +1,6 @@
+/.vscode
+/data
+/debug.cfg
+/debug_custom.json
+/esp32.svd
+/r2.zip

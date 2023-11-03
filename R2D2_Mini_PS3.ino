@@ -44,7 +44,6 @@ https://github.com/philbowles/ESPAsyncWebServer/issues/3
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include "SPIFFS.h"
-#include <Adafruit_Fingerprint.h>
 #include "r2HTML.h"
 #include <AsyncElegantOTA.h>
 
