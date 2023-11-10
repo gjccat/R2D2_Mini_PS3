@@ -1,10 +1,17 @@
+
 /*
   This code is intended for the Mini Droid builds by Matt Zwarts
-  It incorporates the use of a PS3 style controller, ESP32 microcontroller and MX1508 motor drivers or similar
+  It incorporates the use of a PS3 style controller, ESP32 microcontroller and MX1508 motor drivers or similar and PCA9685 Servo Control Board.
   I use a 11.1v battery and step down buck converter to run at 5-6 Volts for the servos
   You can do the same with a 7.4 Volt battery as well or 4 AA batteries
 
-  You will need to install the Ps3Controller, ESP32Servo and DFPlayerMini_Fast libraries from the Tools/Manage Libraries selection for the code to compile
+  You will need to install the libraries below from the Tools/Manage Libraries selection for the code to compile
+  DFPlayerMini_Fast
+  - Adafruit_PWMServoDriver
+  - AsyncTCP
+  - ESPAsyncWebServer
+  - AsyncElegantOTA
+  - Ps3Controller
 
   You will need to find out your PS3 or name brand controller MAC address and enter it into the Ps3.begin setup function below in the code
   //Ps3.begin("00:00:00:00:00:00");
@@ -14,18 +21,28 @@
 
   Connnections to ESP32:
   //motor driver pins to MX1508 motor driver for steering
-  IN1_PIN 5
-  IN2_PIN 18
-  IN3_PIN 19
-  IN4_PIN 21
+  //Right Leg
+  IN1_PIN 13
+  IN2_PIN 12
+  //Left Leg
+  IN3_PIN 14
+  IN4_PIN 27
+  //Dome
+  IN5_PIN 26
+  IN6_PIN 25
 
-  //motor driver pins to MX1508 for dome motor
-  IN5_PIN 2
-  IN6_PIN 4
+
+
+  PS Player Modes
+
+  0 - Left Joystick Movement - Right Joystick Dome - Holo Servo's Auto
+  1 - Left Joystick Movement - Right Joystick Dome - Holo Servo's Manual Triggered
+  2 - Left Joystick Dome, Right Joystick Movement - Holo Servo's Auto
+  3 - Left Joystick Dome, Right Joystick Movement - Holo Servo's Manual Triggered
 
   Connections to servos, 5volt from a constant supply and common GND
-  servo2 26 front arm 1 on PS3 L2
-  servo3 27 front arm 2 on PS3 R2
+  // PWMBoard
+  // Call boards for i2c SDA - Pin 21 __  SCL-Pin 22.
 
   connections to dfplayer mini, again this needs 5Volt and common GND, check pin outs for the component online or on the build instructions
   TX2 - 17
@@ -37,6 +54,7 @@ https://github.com/philbowles/ESPAsyncWebServer/issues/3
 
 // Include required libraries
 #include <math.h>
+
 #include <DFPlayerMini_Fast.h>
 #include <Adafruit_PWMServoDriver.h>
 #include "r2PWMoutput.h"
@@ -46,16 +64,17 @@ https://github.com/philbowles/ESPAsyncWebServer/issues/3
 #include "SPIFFS.h"
 #include "r2HTML.h"
 #include <AsyncElegantOTA.h>
+#include "secrets.h"
 
-// #include <ArduinoWebsockets.h>
-//  Can be replaced with PS4 (https://github.com/aed3/PS4-esp32) or PS5 (https://github.com/rodneybakiskan/ps5-esp32) Library you just need to adjust the Notify for the available buttons and change references o PS3
+//  Can be replaced with PS4 (https://github.com/aed3/PS4-esp32) or PS5 (https://github.com/rodneybakiskan/ps5-esp32) Library you just need to adjust the Notify for the available buttons and change references to PS3
 #include <Ps3Controller.h>
 
 // Set to true to serial debug messages
 const bool sDEBUG = false;
 
-const char *ssid = "R2D2-Mini";
-const char *password = "12345678";
+const char *ap_ssid = "R2D2-Mini";
+const char *ap_password = "12345678";
+
 // enter your PS3 controller MAC address here, you can use a usb cable on PC with sixaxis tool to discover the MAC address
 String MACaddress = "00:00:00:00:00:00";
 
@@ -76,9 +95,6 @@ const int deadzone = 10;
 #define IN5_PIN 26
 #define IN6_PIN 25
 
-#define SER1_TX 4
-#define SER1_RX 2
-
 // Serial2 Pins
 // TX - 17
 // RX - 16
@@ -87,10 +103,13 @@ const int deadzone = 10;
 // SDA - 21
 // SCL - 22
 
+// WIFI Switch - Pin 23
+#define wifi_pin 23
+
 // Create Web Server
 AsyncWebServer server(80);
 // PWMBoard
-// Call boards for i2c
+// Call boards for i2c SDA - Pin 21 __  SCL-Pin 22.
 // #define PWM1 1
 Adafruit_PWMServoDriver pwm1 = Adafruit_PWMServoDriver(0x40);
 // #define PWM2 2
@@ -100,11 +119,13 @@ Adafruit_PWMServoDriver pwm2 = Adafruit_PWMServoDriver(0x41);
 
 // PWM Definitions.  After first run you have to a clear on preferences
 // Servos
+// PCA9685 Board 1
 r2PWMoutput xLeftArm("Left_Arm", pwm1, 0, r2PWMoutput::Servo, 30, 170, 110, 200, r2PWMoutput::Min, r2PWMoutput::Manual);
 r2PWMoutput xRightArm("Right_Arm", pwm1, 1, r2PWMoutput::Servo, 30, 170, 0, 90, r2PWMoutput::Min, r2PWMoutput::Manual);
 r2PWMoutput xCenterLift("Center_Lift", pwm1, 3, r2PWMoutput::Servo, 28, 125, NA, NA, r2PWMoutput::Min, r2PWMoutput::Manual);
 r2PWMoutput xTilt("Tilt", pwm1, 4, r2PWMoutput::Servo, 40, 135, NA, NA, r2PWMoutput::Min, r2PWMoutput::Manual);
 
+// PCA9685 Board 2
 r2PWMoutput xDomeLED1("Dome_LED1", pwm2, 0, r2PWMoutput::LED, 2, 10, 10, 60, r2PWMoutput::Off);
 r2PWMoutput xDomeLED2("Dome_LED2", pwm2, 1, r2PWMoutput::LED, 2, 10, 10, 60, r2PWMoutput::Off);
 r2PWMoutput xDomeLED3("Dome_LED3", pwm2, 2, r2PWMoutput::LED, 2, 10, 10, 60, r2PWMoutput::Off);
@@ -134,7 +155,7 @@ const uint8_t motorCChannel2 = 11;
 // Dome speed is slowed down on the dome motor rotation by this multiplying value
 const float dome_speed = 0.75; // dome rotation speed multiplier, increase or decrease value to speed up dome or slow down, max value is 1.0
 
-// Pins used for DFPlayerMini are Serial1 on GPIO-17 TX and GPIO-16 RX
+// Pins used for DFPlayerMini are Serial2 on GPIO-17 TX and GPIO-16 RX
 // DF Player mini variables
 int setsoundvolume = 25;        ////////////////////////// Change this value from 0 to 30 to adjust the DF player volume///////////////////////////
 const int dfPlayerDelay = 5000; ///////////////////////// Change this value to increase or decrease the delay in between sounds, time is in milliseconds, i.e. 3 seconds = 3000
@@ -147,12 +168,14 @@ AsyncWebSocket ws("/ws");
 /// @param msg the message to print to Serial if debug is true
 void SerialDebug(const String msg)
 {
+    // only Print debugmessages to serial if sDebug is true
     if (sDEBUG)
     {
         Serial.println(msg);
     }
 }
 
+// @brief Checks that only one controller/web controll session is active to ensure that there are no issues with conflicting drive commands
 bool SingleConnection()
 {
     if ((!Ps3.isConnected() && ws.count() != 1) || (Ps3.isConnected() && ws.count() == 1))
@@ -161,6 +184,40 @@ bool SingleConnection()
         return true;
 }
 
+/// @brief Turn Periscope LED on/off (random)
+void periscopeLED()
+{
+    // check if the periscope is UP
+    if (xPeriscope.PWMState == HIGH)
+    { // blink the periscope LED
+        xPeriscopeLED.RandomTrigger(currentMillis);
+    }
+    else if (xPeriscope.PWMState == LOW)
+    {
+        if (xPeriscopeLED.PWMState == LOW)
+        {
+            xPeriscopeLED.OFF();
+        }
+    }
+}
+
+/// @brief Increments the Player Number and Saves the value
+void incrementPlayer()
+{
+    if (player < 3)
+    {
+        player = player++;
+    }
+    else
+    {
+        player = 0;
+    }
+    if (Ps3.isConnected())
+    {
+        Ps3.setPlayer(player);
+    }
+    writeFile(SPIFFS, "/player.txt", String(player));
+}
 /////////////////////////////////////////////////////////////////////////////
 // Motor and Servo Motion Events
 #pragma region Server_Motor_Move
@@ -312,23 +369,8 @@ void moveLegs(const int speedX, const int speedY)
 }
 #pragma endregion Server_Motor_Move
 
-/// @brief Turn Periscope LED on/off (random)
-void periscopeLED()
-{
-    if (xPeriscope.PWMState == HIGH)
-    { // blink the periscope LED
-        xPeriscopeLED.RandomTrigger(currentMillis);
-    }
-    else if (xPeriscope.PWMState == LOW)
-    {
-        if (xPeriscopeLED.PWMState == LOW)
-        {
-            xPeriscopeLED.OFF();
-        }
-    }
-}
-
 // PS3 Controller Functions
+#pragma region PS3_Functions
 // Callback Function
 void PS3notify()
 {
@@ -372,6 +414,15 @@ void PS3notify()
     if (Ps3.event.button_down.cross)
     {
         SerialDebug("Cross pressed");
+        if (player == 1 || player == 3)
+        {
+            xHolo1LED.ManualTrigger();
+            xHolo2LED.ManualTrigger();
+            xHolo3LED.ManualTrigger();
+            xHolo1.ManualTrigger();
+            xHolo2.ManualTrigger();
+            xHolo3.ManualTrigger();
+        }
     }
     if (Ps3.event.button_up.cross)
     {
@@ -475,7 +526,10 @@ void PS3notify()
         SerialDebug("Released the select button");
 
     if (Ps3.event.button_down.start)
+    {
         SerialDebug("Started pressing the start button");
+        incrementPlayer();
+    }
     if (Ps3.event.button_up.start)
         SerialDebug("Released the start button");
 
@@ -492,19 +546,15 @@ void PS3notify()
 
     switch (player)
     {
-    case 0:
+    case 0 ... 1:
         speedX = map(leftX, 128, -128, -255, 255);
         speedY = map(leftY, 128, -128, -255, 255);
         speedZ = map(rightX, -128, 128, -255, 255);
         break;
-    case 1:
+    case 2 ... 3:
         speedX = map(rightX, 128, -128, -255, 255);
         speedY = map(rightY, 128, -128, -255, 255);
         speedZ = map(leftX, -128, 128, -255, 255);
-        break;
-    case 2:
-        break;
-    case 3:
         break;
     case 4:
         break;
@@ -521,36 +571,26 @@ void PS3onConnect()
 {
     // Print to Serial Monitor
     Serial.println("PS3 Controller Connected.....");
+    Ps3.setPlayer(player);
 }
-/////////////////////////////////////////////////////////////////////////////
+
+#pragma endregion PS3_Functions
 
 #pragma region Servo_Motor_Setup
-// Servo Board 1 (Body) Setup
+// @brief Board 1 (Body) Setup
 void servoSetup1()
 {
     xLeftArm.pwmInitialise();
     xRightArm.pwmInitialise();
-    pwm1.setPWM(2, 0, 0); // Not in Use
     xCenterLift.pwmInitialise();
     xTilt.pwmInitialise();
-    pwm1.setPWM(5, 0, 0);  // Not in Use
-    pwm1.setPWM(6, 0, 0);  // Not in Use
-    pwm1.setPWM(7, 0, 0);  // Not in Use
-    pwm1.setPWM(8, 0, 0);  // Not in Use
-    pwm1.setPWM(9, 0, 0);  // Not in Use
-    pwm1.setPWM(10, 0, 0); // Not in Use
-    pwm1.setPWM(11, 0, 0); // Not in Use
-    pwm1.setPWM(12, 0, 0); // Not in Use
-    pwm1.setPWM(13, 0, 0); // Not in Use
-    pwm1.setPWM(14, 0, 0); // Not in Use
-    pwm1.setPWM(15, 0, 0); // Not in Use
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Dome PCA9685 module, lights and Holo proector servos, board will require the A0 tab to be bridged with solder
 // Pulse ranges for the servo positions to the PCA9685 board 0-180 to 150-600
-// Servo Board 2 (Dome) Setup
+// @brief Board 2 (Dome) Setup
 void servoSetup2()
 {
     xDomeLED1.pwmInitialise();
@@ -561,11 +601,8 @@ void servoSetup2()
     xHolo2.pwmInitialise();
     xHolo3.pwmInitialise();
     xDomeLED5.pwmInitialise();
-    pwm2.setPWM(8, 0, 0); // Not in Use
-    pwm2.setPWM(9, 0, 0); // Not in Use
     xPeriscope.pwmInitialise();
     xPeriscopeLED.pwmInitialise();
-    pwm2.setPWM(12, 0, 0); //  Not in Use
     xHolo1LED.pwmInitialise();
     xHolo2LED.pwmInitialise();
     xHolo3LED.pwmInitialise();
@@ -768,6 +805,7 @@ void writeAllPWMOutputSettings()
 
 #pragma endregion SPIFFS_Operations
 
+#pragma region PWM_Output_Functions
 /// @brief Update PWMOutput settings from web interface and save file
 /// @param pwmName Output Name
 /// @param pwmSetting Setting to update
@@ -788,11 +826,6 @@ void writeSettingsToPWMOutput(r2PWMoutput &pPWMOP, const String pwmSetting, cons
     r2PWMoutput *PWMoutput = &pPWMOP;
     PWMoutput->setValue(pwmSetting, value);
 }
-
-// Web server functions
-String cbSelected = "Left_Arm";
-const char *input_parameter1 = "output";
-const char *input_parameter2 = "state";
 
 /// @brief Retrieve the PWMOutput object based on its name.
 /// @param var Name of the PWMoutput object
@@ -834,8 +867,14 @@ r2PWMoutput &getPWMByName(const String var)
     if (var == "Periscope_LED")
         return xPeriscopeLED;
 }
+#pragma endregion PWM_Output_Functions
 
 #pragma region Web_Page_Code
+// Web server functions
+String cbSelected = "Left_Arm";
+const char *input_parameter1 = "output";
+const char *input_parameter2 = "state";
+
 /// @brief Get A html String for the Settings for the Named PWMOutput Object
 /// @param var PWMOutput Name
 /// @return HTML String
@@ -935,9 +974,6 @@ void http()
     server.on("/Controller", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send(SPIFFS, "/psController.html", String(), false, htmlControllerProcessor); });
 }
-
-size_t content_len;
-#define U_PART U_SPIFFS
 
 /// @brief
 void httpget()
@@ -1152,12 +1188,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len)
     }
 }
 
-// i
-
-#pragma endregion Web_Page_Code
-
-HardwareSerial SerialPort(1); // use UART1
-
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
              void *arg, uint8_t *data, size_t len)
 {
@@ -1178,11 +1208,14 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
     }
 }
 
+#pragma endregion Web_Page_Code
+
 void setup()
 {
     //  Setup Serial Monitor for testing
     Serial.begin(115200);
     delay(2000);
+    pinMode(wifi_pin, INPUT_PULLUP);
 
     // Initialise SPIFFS
     if (!SPIFFS.begin(true))
@@ -1194,17 +1227,39 @@ void setup()
 
     // Read Saved PWM Outut Settings from File System
     readAllPWMOutputSettings();
+
+    // read PS3 Conntroler max Address from File and set if not empty
     String tMACAddress = readFile(SPIFFS, "/mac.txt");
     if (tMACAddress != "")
     {
         MACaddress = tMACAddress;
     }
+    String tPlayer = readFile(SPIFFS, "/player.txt");
+    if (tPlayer != "")
+    {
+        tPlayer = tPlayer.toInt();
+    }
 
     SerialDebug("Settings Read");
 
-    // Start the Web Server
-    WiFi.softAP(ssid, password);
-    IPAddress myIP = WiFi.softAPIP();
+    IPAddress myIP;
+    if (digitalRead(wifi_pin) == HIGH)
+    {
+        // Start the Serial.print()
+        WiFi.softAP(ap_ssid, ap_password);
+        myIP = WiFi.softAPIP();
+    }
+    else
+    {
+        WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+        while (WiFi.status() != WL_CONNECTED)
+        {
+            delay(500);
+            Serial.print(".");
+        }
+    }
+
     Serial.print("AP IP address: ");
     Serial.println(myIP);
     Serial.println("Mini Droid..... HTTP:)");
@@ -1228,8 +1283,7 @@ void setup()
 
     SerialDebug("WebServer started");
 
-    ///////Serial1 for dfplayermini communication
-    SerialPort.begin(15200, SERIAL_8N1, 4, 2);
+    ///////Serial for dfplayermini communication
     Serial2.begin(9600);
 
     // Setup the DFPlayerMini
@@ -1267,7 +1321,7 @@ void setup()
     servoSetup2();
     // Print to Serial Monitor
     Serial.println("Mini Droid..... :)");
-    Serial.println(password);
+    Serial.println(ap_password);
     Serial.println(MACaddress);
 }
 
@@ -1281,13 +1335,16 @@ void loop()
     xDomeLED3.RandomTrigger(currentMillis);
     xDomeLED4.RandomTrigger(currentMillis);
     xDomeLED5.RandomTrigger(currentMillis);
-    xHolo1LED.RandomTrigger(currentMillis);
-    xHolo2LED.RandomTrigger(currentMillis);
-    xHolo3LED.RandomTrigger(currentMillis);
-    xHolo1.RandomTrigger(currentMillis);
-    xHolo2.RandomTrigger(currentMillis);
-    xHolo3.RandomTrigger(currentMillis);
 
+    if (player == 0 || player == 2)
+    {
+        xHolo1LED.RandomTrigger(currentMillis);
+        xHolo2LED.RandomTrigger(currentMillis);
+        xHolo3LED.RandomTrigger(currentMillis);
+        xHolo1.RandomTrigger(currentMillis);
+        xHolo2.RandomTrigger(currentMillis);
+        xHolo3.RandomTrigger(currentMillis);
+    }
     periscopeLED();
 
     bool tester = true;

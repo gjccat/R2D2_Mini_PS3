@@ -73,6 +73,7 @@ public:
 	void ON();
 	void OFF();
 	void RandomTrigger(int pCurrentMillis);
+	void ManualTrigger();
 	void pwmInitialise();
 	r2PWMoutput(String pPWMName, Adafruit_PWMServoDriver &PWMBoard, int PWMAddress, PWMEType PWMType, int PWMMin, int PWMMax, int PWMMin2, int PWMMax2, PWMEInitialise PWMHome, PWMEMode PWMMode = Random);
 	r2PWMoutput(String pPWMName, Adafruit_PWMServoDriver &PWMBoard, int PWMAddress, PWMEType PWMType, int PWMMin, int PWMMax, int PWMMin2, int PWMMax2, int PWMOff, int PWMOFFTimeMin, int PWMOFFTimeMax, PWMEInitialise PWMHome, PWMEMode PWMMode = Random);

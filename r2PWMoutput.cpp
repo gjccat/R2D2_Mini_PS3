@@ -154,6 +154,57 @@ void r2PWMoutput::RandomTrigger(int pCurentmillis)
     }
 }
 
+/// @brief Manual Function to Move Servo or turn LED on/off
+void r2PWMoutput::ManualTrigger()
+{
+    switch (PWMMode)
+    {
+    case Random:
+    {
+        switch (PWMType)
+        {
+        case LED:
+
+            if (PWMState == LOW)
+            {
+                OFF();
+            }
+            else
+            {
+                ON();
+            }
+
+            break;
+        case ContinuousServo:
+            if (PWMState == LOW)
+            {
+                long pos1 = random(PWMMin, PWMMax);
+                setPWM(0, pos1);
+                PWMState = HIGH;
+            }
+            else
+            {
+                OFF();
+                PWMState = LOW;
+            }
+            break;
+        case Servo:
+            /* code */
+            break;
+        case RGBLED:
+            /* code */
+            break;
+
+        default:
+            break;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 /// @brief Initialise LED/Servo to "Home" Setting
 void r2PWMoutput::pwmInitialise()
 {
@@ -253,13 +304,13 @@ String r2PWMoutput::inputBox(const String label, const String pmin, const String
 /// @return HTML String
 String r2PWMoutput::inputSlider(const String label, const String pmin, const String pmax, String ID, int Value)
 {
-    if (PWMMax2 == -1||PWMMin2 == -1)
+    if (PWMMax2 == -1 || PWMMin2 == -1)
     {
         return "";
     }
     else
     {
-        return label + "<input id=\"" + ID + "\" type=\"range\" min=\""+pmin+"\" max=\""+pmax+"\" step=\"1\" value=\""+Value+"\" onchange=\"sl(this)\">";
+        return label + "<input id=\"" + ID + "\" type=\"range\" min=\"" + pmin + "\" max=\"" + pmax + "\" step=\"1\" value=\"" + Value + "\" onchange=\"sl(this)\">";
     }
 }
 
@@ -328,11 +379,11 @@ String r2PWMoutput::getValueSettingsHTML()
         switch (PWMHome)
         {
         case Min:
-            Settings += inputSlider("Servo Location","0","255",PWMName,0);
+            Settings += inputSlider("Servo Location", "0", "255", PWMName, 0);
             break;
-        
+
         case Max:
-            Settings += inputSlider("Servo Location","0","255",PWMName,255);
+            Settings += inputSlider("Servo Location", "0", "255", PWMName, 255);
             break;
         }
         break;
@@ -369,7 +420,6 @@ String r2PWMoutput::getSettingsHTML()
     settingsHTML += getValueSettingsHTML();
 
     settingsHTML += "<button type='button' id= \"1\" value=\"home\" onclick=\"btn(this)\">Home</button>";
-   
 
     return settingsHTML;
 }
