@@ -1258,9 +1258,10 @@ void setup()
             delay(500);
             Serial.print(".");
         }
+        myIP=WiFi.localIP();
     }
 
-    Serial.print("AP IP address: ");
+    Serial.print("IP address: ");
     Serial.println(myIP);
     Serial.println("Mini Droid..... HTTP:)");
 
