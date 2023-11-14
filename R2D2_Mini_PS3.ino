@@ -50,6 +50,20 @@
 
 must apply the below fix to ESPAsyncWebServer
 https://github.com/philbowles/ESPAsyncWebServer/issues/3
+
+
+web interface setup for tuning servo values,PS3 mac, testing and over the air updates for the firmware
+ssid = R2D2-Mini
+password = 12345678
+
+http://192.168.4.1   
+will give access to rhe config and testing website
+
+if you connect pin 23 to ground and provide wifi details in secrets.h this will get the 
+droid to join your wifi network and the config page will be available at its ip.
+
+
+
 */
 
 // Include required libraries
