@@ -1,4 +1,3 @@
-
 /*
   This code is intended for the Mini Droid builds by Matt Zwarts
   It incorporates the use of a PS3 style controller, ESP32 microcontroller and MX1508 motor drivers or similar and PCA9685 Servo Control Board.
@@ -77,12 +76,10 @@ droid to join your wifi network and the config page will be available at its ip.
 #include <ESPAsyncWebServer.h>
 #include "SPIFFS.h"
 #include "r2HTML.h"
-#include <AsyncElegantOTA.h>
+#include "ElegantOTA.h"
 #include "secrets.h"
 
-//  Can be replaced with PS4 (https://github.com/aed3/PS4-esp32) or PS5 (https://github.com/rodneybakiskan/ps5-esp32) Library you just need to adjust the Notify for the available buttons and change references to PS3
-#include <Ps3Controller.h>
-
+#include <Bluepad32.h>
 // Set to true to serial debug messages
 const bool sDEBUG = false;
 
@@ -189,12 +186,15 @@ void SerialDebug(const String msg)
     }
 }
 
+ControllerPtr myControllers[BP32_MAX_GAMEPADS];
+
 // @brief Checks that only one controller/web controll session is active to ensure that there are no issues with conflicting drive commands
 bool SingleConnection()
 {
-    if ((!Ps3.isConnected() && ws.count() != 1) || (Ps3.isConnected() && ws.count() == 1))
-        return false;
-    else
+    
+    //if ((!Ps3.isConnected() && ws.count() != 1) || (Ps3.isConnected() && ws.count() == 1))
+    //    return false;
+    //else
         return true;
 }
 
@@ -226,10 +226,10 @@ void incrementPlayer()
     {
         player = 0;
     }
-    if (Ps3.isConnected())
-    {
-        Ps3.setPlayer(player);
-    }
+    //if (Ps3.isConnected())
+    //{
+    //    Ps3.setPlayer(player);
+    //}
     writeFile(SPIFFS, "/player.txt", String(player));
 }
 /////////////////////////////////////////////////////////////////////////////
@@ -386,7 +386,81 @@ void moveLegs(const int speedX, const int speedY)
 // PS3 Controller Functions
 #pragma region PS3_Functions
 // Callback Function
-void PS3notify()
+
+int lastrightX;
+int lastrightY;
+int lastleftX;
+int lastleftY;
+int lastR2;
+int lastL2;
+
+void processKeyboard(ControllerPtr ctl) {
+    if (!ctl->isAnyKeyPressed())
+        return;
+
+    // This is just an example.
+    if (ctl->isKeyPressed(Keyboard_A)) {
+        // Do Something
+        Serial.println("Key 'A' pressed");
+    }
+
+    // Don't do "else" here.
+    // Multiple keys can be pressed at the same time.
+    if (ctl->isKeyPressed(Keyboard_LeftShift)) {
+        // Do something else
+        Serial.println("Key 'LEFT SHIFT' pressed");
+    }
+
+    // Don't do "else" here.
+    // Multiple keys can be pressed at the same time.
+    if (ctl->isKeyPressed(Keyboard_LeftArrow)) {
+        // Do something else
+        Serial.println("Key 'Left Arrow' pressed");
+    }
+
+    // See "dumpKeyboard" for possible things to query.
+    dumpKeyboard(ctl);
+}
+void dumpKeyboard(ControllerPtr ctl) {
+    static const char* key_names[] = {
+        // clang-format off
+        // To avoid having too much noise in this file, only a few keys are mapped to strings.
+        // Starts with "A", which is offset 4.
+        "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V",
+        "W", "X", "Y", "Z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+        // Special keys
+        "Enter", "Escape", "Backspace", "Tab", "Spacebar", "Underscore", "Equal", "OpenBracket", "CloseBracket",
+        "Backslash", "Tilde", "SemiColon", "Quote", "GraveAccent", "Comma", "Dot", "Slash", "CapsLock",
+        // Function keys
+        "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
+        // Cursors and others
+        "PrintScreen", "ScrollLock", "Pause", "Insert", "Home", "PageUp", "Delete", "End", "PageDown",
+        "RightArrow", "LeftArrow", "DownArrow", "UpArrow",
+        // clang-format on
+    };
+    static const char* modifier_names[] = {
+        // clang-format off
+        // From 0xe0 to 0xe7
+        "Left Control", "Left Shift", "Left Alt", "Left Meta",
+        "Right Control", "Right Shift", "Right Alt", "Right Meta",
+        // clang-format on
+    };
+    Serial.printf("idx=%d, Pressed keys: ", ctl->index());
+    for (int key = Keyboard_A; key <= Keyboard_UpArrow; key++) {
+        if (ctl->isKeyPressed(static_cast<KeyboardKey>(key))) {
+            const char* keyName = key_names[key-4];
+            Serial.printf("%s,", keyName);
+       }
+    }
+    for (int key = Keyboard_LeftControl; key <= Keyboard_RightMeta; key++) {
+        if (ctl->isKeyPressed(static_cast<KeyboardKey>(key))) {
+            const char* keyName = modifier_names[key-0xe0];
+            Serial.printf("%s,", keyName);
+        }
+    }
+    Console.printf("\n");
+}
+void processGamepad(ControllerPtr ctl)
 {
     int speedX;
     int speedY;
@@ -399,33 +473,42 @@ void PS3notify()
 
     // Analog Inputs
     //  Get Left Joystick value
-    if (abs(Ps3.event.analog_changed.stick.lx) + abs(Ps3.event.analog_changed.stick.ly) > 2)
+
+    if(lastleftX !=ctl->axisX()) 
     {
-        leftX = (Ps3.data.analog.stick.lx);
-        leftY = (Ps3.data.analog.stick.ly);
+        lastleftX = leftX = ctl->axisX();
     }
-    // Get Right Joystick value
-    if (abs(Ps3.event.analog_changed.stick.rx) + abs(Ps3.event.analog_changed.stick.ry) > 2)
+     if(lastleftY !=ctl->axisY()) 
     {
-        rightX = (Ps3.data.analog.stick.rx);
-        rightY = (Ps3.data.analog.stick.ry);
+        lastleftY = leftY = ctl->axisY();
+    }
+
+    if(lastrightX !=ctl->axisRX()) 
+    {
+        lastrightX = rightX = ctl->axisRX();
+    }
+     if(lastrightY !=ctl->axisRY()) 
+    {
+        lastrightY = rightY = ctl->axisRY();
     }
     // front arm 1
-    if (abs(Ps3.event.analog_changed.button.r2))
+    if (lastR2 != ctl->brake())
     {
         // Right Trigger - right arm
-        xRightArm.setPWM(0, int(Ps3.data.analog.button.r2), true);
+        lastR2 = int(ctl->brake());
+        xRightArm.setPWM(0, lastR2, true);
     }
     // front arm 2
-    if (abs(Ps3.event.analog_changed.button.l2))
+    if (lastL2 != ctl->throttle())
     {
         // Left Trigger - Left arm
-        xLeftArm.setPWM(0, int(Ps3.data.analog.button.l2), true);
+        lastL2 = int(ctl->throttle());
+        xLeftArm.setPWM(0, lastL2, true);
     }
 
     //--- Digital cross/square/triangle/circle button events ---
     // Cross button - LED1 momentary control
-    if (Ps3.event.button_down.cross)
+    if (ctl->x())
     {
         SerialDebug("Cross pressed");
         if (player == 1 || player == 3)
@@ -438,119 +521,90 @@ void PS3notify()
             xHolo3.ManualTrigger();
         }
     }
-    if (Ps3.event.button_up.cross)
-    {
-        SerialDebug("Cross released");
-    }
-
-    // Triangle Button - LED2 toggle control
-    if (Ps3.event.button_down.triangle)
-    {
-        SerialDebug("Triangle presssed");
-    }
-    if (Ps3.event.button_up.triangle)
-        SerialDebug("Released the triangle button");
-    if (Ps3.event.button_down.square)
-        SerialDebug("Started pressing the square button");
-    if (Ps3.event.button_up.square)
-        SerialDebug("Released the square button");
+    
 
     // Circle Button - play sound
-    if (Ps3.event.button_down.circle)
+    if (ctl->b())
     {
         SerialDebug("circle presssed");
         myDFPlayer.playNext();
     }
-    if (Ps3.event.button_up.circle)
-        SerialDebug("Released the circle button");
-
+    
     //--------------- Digital D-pad button events --------------
-    if (Ps3.event.button_down.up)
+    if (ctl->dpad() == 0x01)
     {
         if (setsoundvolume <= 29)
         {
             setsoundvolume++;
         }
     }
-    if (Ps3.event.button_up.up)
-        SerialDebug("Released the up button");
-
-    if (Ps3.event.button_down.right)
+    
+    if (ctl->dpad() == 0x04)
     {
         tiltmechanism();
         liftmechanism();
     }
-    if (Ps3.event.button_up.right)
-        SerialDebug("Released the right button");
-
-    if (Ps3.event.button_down.down)
+    
+        if (ctl->dpad() == 0x02)
     {
         if (setsoundvolume >= 2)
         {
             setsoundvolume--;
         }
     }
-    if (Ps3.event.button_up.down)
-        SerialDebug("Released the down button");
-
-    if (Ps3.event.button_down.left)
-    {
-        SerialDebug("Pressed the left button");
-    }
-    if (Ps3.event.button_up.left)
-        SerialDebug("Released the left button");
+    
 
     //------------- Digital shoulder button events -------------
-    if (Ps3.event.button_down.l1)
-        SerialDebug("Started pressing the left shoulder button");
-    if (Ps3.event.button_up.l1)
-        SerialDebug("Released the left shoulder button");
+    // if (Ps3.event.button_down.l1)
+    //     SerialDebug("Started pressing the left shoulder button");
+    // if (Ps3.event.button_up.l1)
+    //     SerialDebug("Released the left shoulder button");
 
-    if (Ps3.event.button_down.r1)
-        SerialDebug("Started pressing the right shoulder button");
-    if (Ps3.event.button_up.r1)
-        SerialDebug("Released the right shoulder button");
+    // if (Ps3.event.button_down.r1)
+    //     SerialDebug("Started pressing the right shoulder button");
+    // if (Ps3.event.button_up.r1)
+    //     SerialDebug("Released the right shoulder button");
 
     //-------------- Digital trigger button events -------------
-    if (Ps3.event.button_down.l2)
-        SerialDebug("Started pressing the left trigger button");
-    if (Ps3.event.button_up.l2)
-        SerialDebug("Released the left trigger button");
+    // if (Ps3.event.button_down.l2)
+    //     SerialDebug("Started pressing the left trigger button");
+    // if (Ps3.event.button_up.l2)
+    //     SerialDebug("Released the left trigger button");
 
-    if (Ps3.event.button_down.r2)
-        SerialDebug("Started pressing the right trigger button");
-    if (Ps3.event.button_up.r2)
-        SerialDebug("Released the right trigger button");
+    // if (Ps3.event.button_down.r2)
+    //     SerialDebug("Started pressing the right trigger button");
+    // if (Ps3.event.button_up.r2)
+    //     SerialDebug("Released the right trigger button");
 
     //--------------- Digital stick button events --------------
-    if (Ps3.event.button_down.l3)
-        SerialDebug("Started pressing the left stick button");
-    if (Ps3.event.button_up.l3)
-        SerialDebug("Released the left stick button");
+    // if (Ps3.event.button_down.l3)
+    //     SerialDebug("Started pressing the left stick button");
+    // if (Ps3.event.button_up.l3)
+    //     SerialDebug("Released the left stick button");
 
-    if (Ps3.event.button_down.r3)
-        SerialDebug("Started pressing the right stick button");
-    if (Ps3.event.button_up.r3)
-        SerialDebug("Released the right stick button");
+    // if (Ps3.event.button_down.r3)
+    //     SerialDebug("Started pressing the right stick button");
+    // if (Ps3.event.button_up.r3)
+    //     SerialDebug("Released the right stick button");
 
     //---------- Digital select/start/ps button events ---------
-    if (Ps3.event.button_down.select)
-        SerialDebug("Started pressing the select button");
-    if (Ps3.event.button_up.select)
-        SerialDebug("Released the select button");
+    // if (Ps3.event.button_down.select)
+    //     SerialDebug("Started pressing the select button");
+    // if (Ps3.event.button_up.select)
+    //     SerialDebug("Released the select button");
 
-    if (Ps3.event.button_down.start)
-    {
-        SerialDebug("Started pressing the start button");
-        incrementPlayer();
-    }
-    if (Ps3.event.button_up.start)
-        SerialDebug("Released the start button");
+    // if (Ps3.event.button_down.start)
+    // {
+    //     SerialDebug("Started pressing the start button");
+    //     incrementPlayer();
+    // }
+    // if (Ps3.event.button_up.start)
+    //     SerialDebug("Released the start button");
 
-    if (Ps3.event.button_down.ps)
-        SerialDebug("Started pressing the Playstation button");
-    if (Ps3.event.button_up.ps)
-        SerialDebug("Released the Playstation button");
+    // if (Ps3.event.button_down.ps)
+    //     SerialDebug("Started pressing the Playstation button");
+    // if (Ps3.event.button_up.ps)
+    //     SerialDebug("Released the Playstation button");
 
     // DFPlayermini sounds
 
@@ -581,11 +635,60 @@ void PS3notify()
 }
 
 // On Connection function
-void PS3onConnect()
-{
-    // Print to Serial Monitor
-    Serial.println("PS3 Controller Connected.....");
-    Ps3.setPlayer(player);
+// This callback gets called any time a new gamepad is connected.
+// Up to 4 gamepads can be connected at the same time.
+void onConnectedController(ControllerPtr ctl) {
+    bool foundEmptySlot = false;
+    for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+        if (myControllers[i] == nullptr) {
+            Serial.printf("CALLBACK: Controller is connected, index=%d\n", i);
+            // Additionally, you can get certain gamepad properties like:
+            // Model, VID, PID, BTAddr, flags, etc.
+            ControllerProperties properties = ctl->getProperties();
+            Serial.printf("Controller model: %s, VID=0x%04x, PID=0x%04x\n", ctl->getModelName().c_str(), properties.vendor_id,
+                           properties.product_id);
+            myControllers[i] = ctl;
+            foundEmptySlot = true;
+            break;
+        }
+    }
+    if (!foundEmptySlot) {
+        Serial.println("CALLBACK: Controller connected, but could not found empty slot");
+    }
+}
+
+void onDisconnectedController(ControllerPtr ctl) {
+    bool foundController = false;
+
+    for (int i = 0; i < BP32_MAX_GAMEPADS; i++) {
+        if (myControllers[i] == ctl) {
+            Serial.printf("CALLBACK: Controller disconnected from index=%d\n", i);
+            myControllers[i] = nullptr;
+            foundController = true;
+            break;
+        }
+    }
+
+    if (!foundController) {
+        Serial.println("CALLBACK: Controller disconnected, but not found in myControllers");
+    }
+}
+void processControllers() {
+    for (auto myController : myControllers) {
+        if (myController && myController->isConnected() && myController->hasData()) {
+            if (myController->isGamepad()) {
+                processGamepad(myController);
+            } else if (myController->isMouse()) {
+                //processMouse(myController);
+            } else if (myController->isKeyboard()) {
+                processKeyboard(myController);
+            } else if (myController->isBalanceBoard()) {
+                //processBalanceBoard(myController);
+            } else {
+                Serial.println("Unsupported controller");
+            }
+        }
+    }
 }
 
 #pragma endregion PS3_Functions
@@ -1291,7 +1394,7 @@ void setup()
     // Web server async events for Settings change and other commands
     server.addHandler(&events);
     // Start the web Server
-    AsyncElegantOTA.begin(&server);
+    ElegantOTA.begin(&server);
     server.begin();
     ws.onEvent(onEvent);
     server.addHandler(&ws);
@@ -1306,16 +1409,28 @@ void setup()
     myDFPlayer.volume(setsoundvolume); // initial start up volume
     myDFPlayer.playNext();             // Play the first mp3
 
+
+
+    // Setup the Bluepad32 callbacks
+    BP32.setup(&onConnectedController, &onDisconnectedController);
+
+    // "forgetBluetoothKeys()" should be called when the user performs
+    // a "device factory reset", or similar.
+    // Calling "forgetBluetoothKeys" in setup() just as an example.
+    // Forgetting Bluetooth keys prevents "paired" gamepads to reconnect.
+    // But it might also fix some connection / re-connection issues.
+    BP32.forgetBluetoothKeys();
+
     // setup the PS3 Controller
     //  Define Callback Function
-    Ps3.attach(PS3notify);
+    //Ps3.attach(PS3notify);
     // Define On Connection Function
-    Ps3.attachOnConnect(PS3onConnect);
+    //Ps3.attachOnConnect(PS3onConnect);
     // Emulate console as specific MAC address (change as required)
     int str_len = MACaddress.length() + 1;
     char char_array[str_len];
     MACaddress.toCharArray(char_array, str_len);
-    Ps3.begin(char_array);
+    //Ps3.begin(char_array);
 
     // Init Servo Boards
     pwm1.begin();
@@ -1344,6 +1459,11 @@ void setup()
 
 void loop()
 {
+    bool dataUpdated = BP32.update();
+    if (dataUpdated)
+        processControllers();
+
+
     currentMillis = millis();
     xDomeLED1.RandomTrigger(currentMillis);
     xDomeLED2.RandomTrigger(currentMillis);
@@ -1377,11 +1497,11 @@ void loop()
         ledcWrite(motorCChannel2, 0);
         delay(1000);
     }
-    else if (Ps3.isConnected())
-    {
-        Serial.println("PS3 Controller Connected..... :)");
-        delay(1000);
-    }
+    //else if (Ps3.isConnected())
+    //{
+    //    Serial.println("PS3 Controller Connected..... :)");
+    //    delay(1000);
+    //}
     else if (ws.count() == 1)
     {
         Serial.println("Web Controller Connected..... :)");
