@@ -223,20 +223,24 @@ void periscopeLED()
 }
 
 /// @brief Increments the Player Number and Saves the value
-void incrementPlayer()
+void incrementPlayer(ControllerPtr ctl)
 {
-    if (player < 3)
+    if (player <=2)
     {
-        player = player++;
+        player++;
     }
     else
     {
         player = 0;
     }
+    Serial.print("player:");
+    Serial.print(player);
+    ctl->setPlayerLEDs(player & 0x0f);
     // if (Ps3.isConnected())
     //{
     //     Ps3.setPlayer(player);
     // }
+    
     writeFile(SPIFFS, "/player.txt", String(player));
 }
 /////////////////////////////////////////////////////////////////////////////
@@ -329,11 +333,14 @@ void moveDome(const int speedZ)
         {
             ledcWrite(motorCChannel1, 0);
             ledcWrite(motorCChannel2, 0);
+            Serial.println("Dome Stop");
             return;
         }
         int motorCPWM = 0;
         // head turn
         motorCPWM = speedZ * dome_speed;
+        Serial.print("motorC");
+        Serial.println(motorCPWM);
         moveMotor(motorCPWM, motorCChannel1, motorCChannel2);
     }
 }
@@ -351,6 +358,7 @@ void moveLegs(const int speedY, const int speedX)
             ledcWrite(motorAChannel2, 0);
             ledcWrite(motorBChannel1, 0);
             ledcWrite(motorBChannel2, 0);
+            Serial.println("stop");
             return;
         }
         // Variables for Motor PWM values
@@ -396,10 +404,10 @@ void moveLegs(const int speedY, const int speedX)
         // Map the values onto the defined rang
         motorAPWM = map(rawLeft, -255, 255, -255, 255);
         motorBPWM = map(rawRight, -255, 255, -255, 255);
-        SerialDebug("motorA");
-        SerialDebug(motorAPWM);
+        Serial.print("motorA");
+        Serial.println(motorAPWM);
         Serial.print("motorB");
-        SerialDebug(motorBPWM);
+        Serial.println(motorBPWM);
         // Set the motor directions
         moveMotor(motorAPWM, motorAChannel1, motorAChannel2);
         moveMotor(motorBPWM, motorBChannel1, motorBChannel2);
@@ -495,7 +503,7 @@ int leftX = 0;
 int leftY = 0;
 int R2 = 0;
 int L2 = 0;
-int minn = 50;
+int minn = 60;
 
 void processGamepad(ControllerPtr ctl)
 {
@@ -518,7 +526,7 @@ void processGamepad(ControllerPtr ctl)
     else
     {
         leftX = 0;
-        SerialDebug("leftX:");
+        SerialDebug("leftXa:");
         SerialDebug(leftX);
     }
 
@@ -534,7 +542,7 @@ void processGamepad(ControllerPtr ctl)
     else
     {
         leftY = 0;
-        SerialDebug("leftY:");
+        SerialDebug("leftYa:");
         SerialDebug(leftY);
     }
     if (minn <= abs(ctl->axisRX()))
@@ -549,7 +557,7 @@ void processGamepad(ControllerPtr ctl)
     else
     {
         rightX = 0;
-        SerialDebug("rightX:");
+        SerialDebug("rightXa:");
         SerialDebug(rightX);
     }
     if (minn <= abs(ctl->axisRY()))
@@ -564,7 +572,7 @@ void processGamepad(ControllerPtr ctl)
     else
     {
         rightY = 0;
-        SerialDebug("rightY:");
+        SerialDebug("rightYa:");
         SerialDebug(rightY);
     }
     // front arm 1
@@ -604,9 +612,10 @@ void processGamepad(ControllerPtr ctl)
     }
     //--- Digital cross/square/triangle/circle button events ---
     // Cross button - LED1 momentary control
-    if (ctl->x())
+    if (ctl->a())
     {
         SerialDebug("Cross pressed");
+        Serial.println("cross");
         if (player == 1 || player == 3)
         {
             xHolo1LED.ManualTrigger();
@@ -615,6 +624,7 @@ void processGamepad(ControllerPtr ctl)
             xHolo1.ManualTrigger();
             xHolo2.ManualTrigger();
             xHolo3.ManualTrigger();
+            
         }
     }
 
@@ -623,6 +633,14 @@ void processGamepad(ControllerPtr ctl)
     {
         SerialDebug("circle presssed");
         myDFPlayer.playNext();
+        Serial.println("circle");
+    }
+    if (ctl->y())
+    {
+        SerialDebug("circle presssed");
+        incrementPlayer(ctl);
+        
+        Serial.println("c");
     }
 
     //--------------- Digital D-pad button events --------------
@@ -658,28 +676,28 @@ void processGamepad(ControllerPtr ctl)
     switch (player)
     {
     case 0 ... 1:
+        speedX = map(rightX, 128, -128, -255, 255);
+        speedY = map(rightY, 128, -128, -255, 255);
+        speedZ = map(leftX, 128, -128, -255, 255);
+        break;
+    case 2 ... 3:
         speedX = map(leftX, 128, -128, -255, 255);
         speedY = map(leftY, 128, -128, -255, 255);
         speedZ = map(rightX, -128, 128, -255, 255);
-        break;
-    case 2 ... 3:
-        speedX = map(rightX, 128, -128, -255, 255);
-        speedY = map(rightY, 128, -128, -255, 255);
-        speedZ = map(leftX, -128, 128, -255, 255);
         break;
     case 4:
         break;
     case 5:
         break;
     }
-    if (leftX == 0)
-    {
-        speedX = 0;
-    }
-    if (leftY == 0)
-    {
-        speedY = 0;
-    }
+    // if (leftX == 0)
+    // {
+    //     speedX = 0;
+    // }
+    // if (leftY == 0)
+    // {
+    //     speedY = 0;
+    // }
     if (lastSpeedX != speedX || lastSpeedY != speedY)
     {
         SerialDebug("SpeedX:");
@@ -695,8 +713,9 @@ void processGamepad(ControllerPtr ctl)
     
     if (LastSpeedZ != speedZ)
     {
-        SerialDebug("SpeedZ:");
-        SerialDebug(speedZ);
+        Serial.print("SpeedZ:");
+        Serial.println(speedZ);
+        LastSpeedZ = speedZ;
         moveDome(speedZ);
     }
 }
@@ -1504,7 +1523,7 @@ void setup()
     // Calling "forgetBluetoothKeys" in setup() just as an example.
     // Forgetting Bluetooth keys prevents "paired" gamepads to reconnect.
     // But it might also fix some connection / re-connection issues.
-    BP32.forgetBluetoothKeys();
+    //BP32.forgetBluetoothKeys();
 
     // setup the PS3 Controller
     //  Define Callback Function
@@ -1591,5 +1610,6 @@ void loop()
         Serial.println("Web Controller Connected..... :)");
         delay(1000);
     }
+     vTaskDelay(1);
 }
 /////////////////////////////////////////////////////////////////////////////
