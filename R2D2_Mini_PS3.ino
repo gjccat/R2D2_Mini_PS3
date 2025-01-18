@@ -10,7 +10,7 @@
   - Adafruit_PWMServoDriver
   - AsyncTCP
   - ESPAsyncWebServer
-  - AsyncElegantOTA
+  - ElegantOTA
   - Ps3Controller
 
   You will need to find out your PS3 or name brand controller MAC address and enter it into the Ps3.begin setup function below in the code
@@ -77,7 +77,7 @@ droid to join your wifi network and the config page will be available at its ip.
 #include <ESPAsyncWebServer.h>
 #include "SPIFFS.h"
 #include "r2HTML.h"
-#include <AsyncElegantOTA.h>
+#include <ElegantOTA.h>
 #include "secrets.h"
 
 //  Can be replaced with PS4 (https://github.com/aed3/PS4-esp32) or PS5 (https://github.com/rodneybakiskan/ps5-esp32) Library you just need to adjust the Notify for the available buttons and change references to PS3
@@ -1291,7 +1291,7 @@ void setup()
     // Web server async events for Settings change and other commands
     server.addHandler(&events);
     // Start the web Server
-    AsyncElegantOTA.begin(&server);
+    ElegantOTA.begin(&server);
     server.begin();
     ws.onEvent(onEvent);
     server.addHandler(&ws);
